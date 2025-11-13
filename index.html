@@ -1,1 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Work Schedule</title>
+<style>
+  /* === 全局样式 === */
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+  body { font-size: 20px; background: #f5f7fa; color: #333; display: flex; flex-direction: column; }
+  h1 { font-size: 1.5em; }
+
+  /* === 顶部标题栏 === */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; position: sticky; top: 0; background: #fff; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 60px;
+  }
+  header .save-btn {
+    width: 80px; height: 36px; background: #ccc; border-radius: 6px; border: none; cursor: default;
+  }
+  header .title { flex: 1; text-align: center; font-weight: bold; color: #007ACC; }
+  header .spacer { width: 120px; }
+
+  /* === 主布局 === */
+  main { display: flex; flex: 1; padding: 20px; gap: 12px; height: calc(100vh - 60px); overflow: hidden; }
+  aside { width: 280px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* === 日期显示 === */
+  .date-box {
+    border: 2px solid #007ACC; border-radius: 10px; padding: 10px; text-align: center;
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.1); background: #e6f0fa; font-weight: bold;
+  }
+
+  /* === 固定任务网格 === */
+  .fixed-tasks { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; }
+  .fixed-task { padding: 10px; border-radius: 6px; text-align: center; cursor: grab; user-select: none; }
+  .task-absent { background: #E8E8E8; }
+  .task-leave { background: #F0F0E8; }
+  .task-pending { background: #D7B8A7; }
+  .task-outside { background: #C9A78F; }
+
+  /* === 可分配项目列表 === */
+  .project-list { flex: 1; overflow-y: auto; border: 1px solid #ccc; border-radius: 6px; padding: 6px; }
+  .project { padding: 6px 10px; margin-bottom: 6px; border-radius: 6px; cursor: grab; transition: transform 0.2s; user-select: none; }
+  .project:hover { transform: translateY(-2px); }
+
+  /* === 垃圾桶 === */
+  .trash { height: 60px; border: 2px dashed #ccc; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #999; transition: border-color 0.2s; }
+  .trash.active { border-color: red; }
+
+  /* === 日程表 === */
+  .schedule-container { flex: 1; display: flex; overflow: auto; }
+  .schedule-grid { display: grid; grid-template-columns: 150px repeat(16, 1fr); grid-auto-rows: 40px; gap: 1px; background: #ccc; }
+  .cell, .header-cell { background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+  .header-cell { background: #007ACC; color: #fff; font-weight: bold; cursor: default; }
+  .cell.rest { background: #f0f0f0; cursor: default; }
+  .cell.rest::after { content: '🍜'; position: absolute; font-size: 1.2em; }
+  .cell.selected { outline: 3px solid #0f0; z-index: 5; }
+
+  /* === 员工呼吸光 === */
+  @keyframes breathe-yellow { 0%,100% { box-shadow: 0 0 8px 2px #fffa90; } 50% { box-shadow: 0 0 16px 6px #fffa90; } }
+  @keyframes breathe-cyan { 0%,100% { box-shadow: 0 0 8px 2px #90ffff; } 50% { box-shadow: 0 0 16px 6px #90ffff; } }
+  .highlight-yellow { animation: breathe-yellow 2s infinite; }
+  .highlight-cyan { animation: breathe-cyan 2s infinite; }
+
+  /* === 日程块样式 === */
+  .schedule-block { position: absolute; border-radius: 6px; padding: 2px 4px; color: #000; font-weight: bold; cursor: grab; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden; white-space: nowrap; }
+
+  /* === 自定义任务输入 === */
+  .custom-task { display: flex; gap: 6px; margin-top: 6px; }
+  .custom-task input { flex: 1; padding: 6px; border-radius: 6px; border: 1px solid #ccc; }
+  .custom-task button { padding: 6px 12px; border-radius: 6px; border: none; background: #007ACC; color: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="save-btn">Save</button>
+  <div class="title">Daily Work Schedule</div>
+  <div class="spacer"></div>
+</header>
+
+<main>
+  <aside>
+    <div class="date-box" id="dateBox"></div>
+
+    <div class="fixed-tasks" id="fixedTasks">
+      <div class="fixed-task task-absent" draggable="true">Absent</div>
+      <div class="fixed-task task-leave" draggable="true">Leave</div>
+      <div class="fixed-task task-pending" draggable="true">Pending</div>
+      <div class="fixed-task task-outside" draggable="true">Outside</div>
+    </div>
+
+    <div class="project-list" id="projectList">
+      <!-- 项目列表动态生成 -->
+    </div>
+
+    <div class="trash" id="trash">🗑 Trash</div>
+
+    <div class="custom-task">
+      <input type="text" id="newTask" placeholder="Customer Name (009999-10)">
+      <button id="addTaskBtn">Submit</button>
+    </div>
+  </aside>
+
+  <section>
+    <div class="schedule-container">
+      <div class="schedule-grid" id="scheduleGrid">
+        <!-- 动态生成表格 -->
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* === 日期显示 === */
+function updateDate() {
+  const now = new Date();
+  document.getElementById('dateBox').innerText = 'Date：' + now.getFullYear() + '/' + (now.getMonth()+1) + '/' + now.getDate();
+}
+updateDate();
+
+/* === 项目列表数据 === */
+const initialProjects = [
+  'BEE CHUN HENG (007601-1)','PROJECT A (007602-2)','PROJECT B (007603-3)','PROJECT C (007604-4)',
+  'PROJECT D (007605-5)','PROJECT E (007606-6)','PROJECT F (007607-7)','PROJECT G (007608-8)',
+  'PROJECT H (007609-9)','PROJECT I (007610-10)','PROJECT J (007611-11)','PROJECT K (007612-12)',
+  'PROJECT L (007613-13)','PROJECT M (007614-14)','PROJECT N (007615-15)','PROJECT O (007616-16)',
+  'PROJECT P (007617-17)','PROJECT Q (007618-18)','PROJECT R (007619-19)','PROJECT S (007620-20)',
+  'PROJECT T (007621-21)','PROJECT U (007622-22)','PROJECT V (007623-23)','PROJECT W (007624-24)',
+  'PROJECT X (007625-25)','PROJECT Y (007626-26)','PROJECT Z (007627-27)','PROJECT AA (007628-28)',
+  'PROJECT AB (007629-29)'
+];
+let projectUsage = {}; // 计数
+const projectList = document.getElementById('projectList');
+
+function colorFromCode(code) {
+  let num = parseInt(code.slice(-2));
+  const hue = (num*137.5) % 360;
+  return `hsl(${hue}, 50%, 80%)`;
+}
+
+function renderProjects() {
+  projectList.innerHTML = '';
+  initialProjects.forEach(name => {
+    const code = name.match(/\((.*?)\)/)[1];
+    const div = document.createElement('div');
+    div.className = 'project';
+    div.draggable = true;
+    div.style.background = colorFromCode(code);
+    div.innerText = name;
+    projectUsage[name] = 0;
+    addDragEvents(div);
+    projectList.appendChild(div);
+  });
+}
+renderProjects();
+
+/* === 日程表生成 === */
+const employees = ['Seah','Chay','Poh','Albert','Aung Thant','Chin','Emp7','Emp8','Emp9','Emp10','Emp11','Emp12','Emp13','Emp14','Emp15','Emp16'];
+const times = ['8:30','9:30','10:30','11:30','12:00','12:30','13:30','14:30','15:30','16:30','17:30','18:30','19:30','20:30','21:30','22:00'];
+const restTimes = ['12:00','17:30'];
+const scheduleGrid = document.getElementById('scheduleGrid');
+
+function createScheduleGrid() {
+  // 顶部时间行
+  scheduleGrid.appendChild(document.createElement('div')); // 空左上角
+  times.forEach(t => {
+    const th = document.createElement('div');
+    th.className = 'header-cell';
+    th.innerText = t;
+    scheduleGrid.appendChild(th);
+  });
+  // 员工行
+  employees.forEach(emp => {
+    const nameCell = document.createElement('div');
+    nameCell.className = 'header-cell';
+    nameCell.innerText = emp;
+    if(['Seah','Chay'].includes(emp)) nameCell.classList.add('highlight-yellow');
+    if(['Poh','Albert','Aung Thant','Chin'].includes(emp)) nameCell.classList.add('highlight-cyan');
+    scheduleGrid.appendChild(nameCell);
+    times.forEach(t => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.employee = emp;
+      cell.dataset.time = t;
+      if(restTimes.includes(t)) cell.classList.add('rest');
+      cell.addEventListener('click', () => selectCell(cell));
+      scheduleGrid.appendChild(cell);
+    });
+  });
+}
+createScheduleGrid();
+
+let selectedCell = null;
+function selectCell(cell) {
+  document.querySelectorAll('.cell.selected').forEach(c => c.classList.remove('selected'));
+  if(!cell.classList.contains('rest')) {
+    cell.classList.add('selected');
+    selectedCell = cell;
+  }
+}
+
+/* === 拖放逻辑 === */
+let draggedItem = null;
+
+function addDragEvents(item) {
+  item.addEventListener('dragstart', e => {
+    draggedItem = item;
+    e.dataTransfer.setData('text/plain', item.innerText);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+}
+
+document.querySelectorAll('.cell').forEach(cell => {
+  cell.addEventListener('dragover', e => {
+    if(selectedCell && !cell.classList.contains('rest')) e.preventDefault();
+  });
+  cell.addEventListener('drop', e => {
+    e.preventDefault();
+    if(!selectedCell) return;
+    assignTaskToCell(draggedItem, selectedCell);
+  });
+});
+
+/* === 垃圾桶 === */
+const trash = document.getElementById('trash');
+trash.addEventListener('dragover', e => { e.preventDefault(); trash.classList.add('active'); });
+trash.addEventListener('dragleave', e => { trash.classList.remove('active'); });
+trash.addEventListener('drop', e => {
+  e.preventDefault();
+  trash.classList.remove('active');
+  if(draggedItem && !draggedItem.classList.contains('fixed-task')) {
+    draggedItem.remove();
+  }
+});
+
+/* === 分配任务 === */
+function assignTaskToCell(item, cell) {
+  const gridRect = scheduleGrid.getBoundingClientRect();
+  const block = document.createElement('div');
+  block.className = 'schedule-block';
+  block.style.background = item.style.background || '#ccc';
+  block.innerText = item.innerText.includes('(') ? item.innerText : item.innerText;
+  block.style.top = cell.offsetTop + 'px';
+  block.style.left = cell.offsetLeft + 'px';
+  block.style.width = cell.offsetWidth + 'px';
+  block.style.height = cell.offsetHeight + 'px';
+  scheduleGrid.appendChild(block);
+
+  if(initialProjects.includes(item.innerText)) projectUsage[item.innerText]++;
+
+  block.draggable = true;
+  block.addEventListener('dragstart', e => {
+    draggedItem = block;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  block.addEventListener('click', () => {
+    block.remove();
+    if(initialProjects.includes(item.innerText)) {
+      projectUsage[item.innerText]--;
+      if(projectUsage[item.innerText] <= 0) {
+        const projDivs = Array.from(document.querySelectorAll('.project'));
+        projDivs.forEach(p => { if(p.innerText === item.innerText) p.remove(); });
+      }
+    }
+  });
+}
+
+/* === 自定义任务添加 === */
+document.getElementById('addTaskBtn').addEventListener('click', addCustomTask);
+document.getElementById('newTask').addEventListener('keydown', e => { if(e.key==='Enter') addCustomTask(); });
+
+function addCustomTask() {
+  const val = document.getElementById('newTask').value.trim();
+  if(!val) return;
+  const div = document.createElement('div');
+  div.className = 'project';
+  div.draggable = true;
+  const codeMatch = val.match(/\((.*?)\)/);
+  div.style.background = codeMatch ? colorFromCode(codeMatch[1]) : '#ddd';
+  div.innerText = val;
+  projectUsage[val] = 0;
+  addDragEvents(div);
+  projectList.prepend(div);
+  document.getElementById('newTask').value = '';
+}
+</script>
+
+</body>
+</html>
 
