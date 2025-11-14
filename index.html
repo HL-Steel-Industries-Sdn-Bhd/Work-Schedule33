@@ -528,7 +528,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // initial fetch
   refreshTasks();
   // 每 5 分钟刷新一次
-  setInterval(refreshTasks, 5*60*1000);
+  setInterval(refreshTasks, 1*30*1000);
   
   // create fixed tasks' drag behavior (they are in DOM already as fixed-xxx)
   [fixedAbsent, fixedLeave, fixedPending, fixedOutside].forEach(el=>{
